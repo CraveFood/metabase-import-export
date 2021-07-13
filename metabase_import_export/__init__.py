@@ -1,5 +1,4 @@
 
-import getpass
 import json
 import requests
 import sys
@@ -41,9 +40,7 @@ def call_api(method, uri, json=None, params=None):
     return response.json()
 
 
-def metabase_login(username):
-    password = getpass.getpass("Password for user {}: ".format(username))
-
+def metabase_login(username, password):
     login_url = "/api/session"
     data = {
         "username": username,
@@ -261,31 +258,45 @@ def get_db_names(data, source):
 def map_databases(exported_databases):
     dbs = list_databases()
 
-    print(
-        "\nTo import the data to Metabase you will need to "
-        "select the database where you want the data to be imported to.\n"
-    )
-    db_ids = [db["id"] for db in dbs]
     for exported_db in exported_databases:
-        while True:
+        selection = None
+
+        # select db automatically if name is matching
+        for db in dbs:
+            if db["name"] == exported_db["name"]:
+                print(db["name"] + " is selected database to import the data exported")
+                selection = db["id"]
+                break
+
+        # if name is matching continue manuel
+        if selection is None:
             print(
-                "Select the database where you want to import the data exported "
-                "from the database '{}'.\n".format(exported_db["name"])
+                "\nTo import the data to Metabase you will need to "
+                "select the database where you want the data to be imported to.\n"
             )
-            for db in dbs:
-                print("{} - {}".format(db["id"], db["name"]))
+            db_ids = [db["id"] for db in dbs]
 
-            print("")
-            selection = input("\n>>> ")
+            while True:
+                print(
+                    "Select the database where you want to import the data exported "
+                    "from the database '{}'.\n".format(exported_db["name"])
+                )
+                for db in dbs:
+                    print("{} - {}".format(db["id"], db["name"]))
 
-            try:
-                if int(selection) in db_ids:
-                    DB_MAPPING[exported_db["id"]] = int(selection)
-                    break
-                else:
-                    print("\n*** Invalid selection ***\n")
-            except ValueError:
-                print("\n** Invalid selection **\n")
+                print("")
+                selection_input = input("\n>>> ")
+
+                try:
+                    if int(selection_input) in db_ids:
+                        selection = int(selection_input)
+                        break
+                    else:
+                        print("\n*** Invalid selection ***\n")
+                except ValueError:
+                    print("\n** Invalid selection **\n")
+
+        DB_MAPPING[exported_db["id"]] = selection
 
 
 def load_database_mapping(exported_databases):
