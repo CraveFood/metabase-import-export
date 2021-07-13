@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import argparse
+import os
 
 from . import run_import, run_export, metabase_login, set_metabase_url
 
@@ -17,12 +18,17 @@ def get_argparser():
     parser.add_argument(
         "--username",
         help="Metabase admin user",
-        required=True,
+        default=os.environ.get('METABASE_USERNAME')
+    )
+    parser.add_argument(
+        "--password",
+        help="Metabase admin password",
+        default=os.environ.get('METABASE_PASSWORD')
     )
     parser.add_argument(
         "--url",
         help="Metabase base URL",
-        default="http://localhost:3000",
+        default=os.environ.get('METABASE_API_URL')
     )
 
     subparsers = parser.add_subparsers()
@@ -65,7 +71,7 @@ def main():
     args = parser.parse_args()
 
     set_metabase_url(args.url)
-    metabase_login(args.username)
+    metabase_login(args.username, args.password)
 
     if hasattr(args, "func"):
         args.func(args)
