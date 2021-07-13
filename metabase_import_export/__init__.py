@@ -14,6 +14,9 @@ TABLE_MAPPING = {}
 FIELD_MAPPING = {}
 FIELD_CONFIG_DICT = {}
 
+# Dashboard configuration fields that would be explicitly set after the dashboard created while importing
+DASHBOARD_CONFIG_SYNC_LIST = ["enable_embedding", "embedding_params"]
+
 SESSION = requests.Session()
 
 
@@ -76,6 +79,11 @@ def get_collection_items(collection_id):
 def get_dashboard(dashboard_id):
     api_dashboard_url = "/api/dashboard/{}".format(dashboard_id)
     return call_api("get", api_dashboard_url)
+
+
+def update_dashboard(dashboard_id, dashboard_body):
+    api_dashboard_url = "/api/dashboard/{}".format(dashboard_id)
+    return call_api("put", api_dashboard_url, json=dashboard_body)
 
 
 def delete_dashboard(dashboard_id):
@@ -181,6 +189,15 @@ def create_dashboard(dashboard, **kwargs):
             "col": card["col"],
         }
         call_api("post", api_add_card_to_dashboard, json=data)
+
+    dashboard_config_body = {}
+
+    for config_key in DASHBOARD_CONFIG_SYNC_LIST:
+        config_val = dashboard.get(config_key)
+        if config_val:
+            dashboard_config_body[config_key] = config_val
+
+    update_dashboard(new_dashboard["id"], dashboard_config_body)
 
 
 def export_databases(collection_items):
