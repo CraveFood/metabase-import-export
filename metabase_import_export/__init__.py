@@ -12,6 +12,7 @@ EXPORT_IMPORT_MAPPING = {}
 DB_MAPPING = {}
 TABLE_MAPPING = {}
 FIELD_MAPPING = {}
+FIELD_CONFIG_DICT = {}
 
 SESSION = requests.Session()
 
@@ -73,6 +74,11 @@ def get_dashboard(dashboard_id):
 def list_databases():
     api_db_url = "/api/database/"
     return call_api("get", api_db_url)
+
+
+def update_field(field_id, field_body):
+    api_field_url = f"/api/field/{field_id}"
+    return call_api("put", api_field_url, json=field_body)
 
 
 def get_database(db_id):
@@ -305,6 +311,7 @@ def load_database_mapping(exported_databases):
                         and field["table_id"] == TABLE_MAPPING[exported_table["id"]]
                     ):
                         FIELD_MAPPING[exported_field["id"]] = field["id"]
+                        FIELD_CONFIG_DICT[exported_field["id"]] = exported_field
                         break
 
                 else:
@@ -316,6 +323,13 @@ def load_database_mapping(exported_databases):
                     sys.exit(1)
 
 
+def match_dataset_configurations():
+    for exported_field_id in FIELD_MAPPING.keys():
+        target_field_id = FIELD_MAPPING[exported_field_id]
+        exported_field_body = FIELD_CONFIG_DICT[exported_field_id]
+        update_field(target_field_id, exported_field_body)
+
+
 def import_collection(export_file, collection_id):
     check_if_collection_exists(collection_id)
 
@@ -323,6 +337,8 @@ def import_collection(export_file, collection_id):
         export_data = json.load(export_file)
 
     load_database_mapping(export_data["databases"])
+
+    match_dataset_configurations()
 
     for item in export_data["collection_items"]:
         if item["model"] == "card":
