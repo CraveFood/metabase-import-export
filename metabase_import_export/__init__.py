@@ -31,6 +31,8 @@ def call_api(method, uri, json=None, params=None):
     )
     if response.status_code == requests.codes.not_found:
         print("Not found: {}".format(url))
+    elif method == "delete" and response.status_code == requests.codes.no_content:
+        return None
     elif not 200 <= response.status_code < 300:
         print(response.content.decode("utf-8"))
     return response.json()
@@ -51,6 +53,11 @@ def metabase_login(username):
         sys.exit(1)
 
 
+def delete_card(card_id):
+    api_card_url = "/api/card/{}".format(card_id)
+    return call_api("delete", api_card_url)
+
+
 def get_card(card_id):
     api_card_url = "/api/card/{}".format(card_id)
     return call_api("get", api_card_url)
@@ -69,6 +76,11 @@ def get_collection_items(collection_id):
 def get_dashboard(dashboard_id):
     api_dashboard_url = "/api/dashboard/{}".format(dashboard_id)
     return call_api("get", api_dashboard_url)
+
+
+def delete_dashboard(dashboard_id):
+    api_dashboard_url = "/api/dashboard/{}".format(dashboard_id)
+    return call_api("delete", api_dashboard_url)
 
 
 def list_databases():
@@ -332,6 +344,16 @@ def match_dataset_configurations():
 
 def import_collection(export_file, collection_id):
     check_if_collection_exists(collection_id)
+
+    collection_items = get_collection_items(collection_id)
+    for item in collection_items:
+        model = item["model"]
+        id = item["id"]
+
+        if model == "card":
+            delete_card(id)
+        elif model == "dashboard":
+            delete_dashboard(id)
 
     with open(export_file) as export_file:
         export_data = json.load(export_file)
