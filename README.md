@@ -8,7 +8,7 @@ Supports SQL native questions and dashboards. Snippets and non-SQL questions are
 
 ```
 python setup.py sdist
-pip install dist/dist/metabase-import-export-0.2.3.tar.gz
+pip install dist/metabase-import-export-0.2.3.tar.gz
 ```
 
 ## Usage
