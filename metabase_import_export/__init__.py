@@ -1,5 +1,4 @@
 
-import getpass
 import json
 import requests
 import sys
@@ -12,6 +11,10 @@ EXPORT_IMPORT_MAPPING = {}
 DB_MAPPING = {}
 TABLE_MAPPING = {}
 FIELD_MAPPING = {}
+FIELD_CONFIG_DICT = {}
+
+# Dashboard configuration fields that would be explicitly set after the dashboard created while importing
+DASHBOARD_CONFIG_SYNC_LIST = ["enable_embedding", "embedding_params"]
 
 SESSION = requests.Session()
 
@@ -30,14 +33,14 @@ def call_api(method, uri, json=None, params=None):
     )
     if response.status_code == requests.codes.not_found:
         print("Not found: {}".format(url))
+    elif method == "delete" and response.status_code == requests.codes.no_content:
+        return None
     elif not 200 <= response.status_code < 300:
         print(response.content.decode("utf-8"))
     return response.json()
 
 
-def metabase_login(username):
-    password = getpass.getpass("Password for user {}: ".format(username))
-
+def metabase_login(username, password):
     login_url = "/api/session"
     data = {
         "username": username,
@@ -48,6 +51,11 @@ def metabase_login(username):
     if "errors" in login_response:
         print("Failed to login in Metabase")
         sys.exit(1)
+
+
+def delete_card(card_id):
+    api_card_url = "/api/card/{}".format(card_id)
+    return call_api("delete", api_card_url)
 
 
 def get_card(card_id):
@@ -70,9 +78,24 @@ def get_dashboard(dashboard_id):
     return call_api("get", api_dashboard_url)
 
 
+def update_dashboard(dashboard_id, dashboard_body):
+    api_dashboard_url = "/api/dashboard/{}".format(dashboard_id)
+    return call_api("put", api_dashboard_url, json=dashboard_body)
+
+
+def delete_dashboard(dashboard_id):
+    api_dashboard_url = "/api/dashboard/{}".format(dashboard_id)
+    return call_api("delete", api_dashboard_url)
+
+
 def list_databases():
     api_db_url = "/api/database/"
     return call_api("get", api_db_url)
+
+
+def update_field(field_id, field_body):
+    api_field_url = f"/api/field/{field_id}"
+    return call_api("put", api_field_url, json=field_body)
 
 
 def get_database(db_id):
@@ -164,6 +187,15 @@ def create_dashboard(dashboard, **kwargs):
         }
         call_api("post", api_add_card_to_dashboard, json=data)
 
+    dashboard_config_body = {}
+
+    for config_key in DASHBOARD_CONFIG_SYNC_LIST:
+        config_val = dashboard.get(config_key)
+        if config_val:
+            dashboard_config_body[config_key] = config_val
+
+    update_dashboard(new_dashboard["id"], dashboard_config_body)
+
 
 def export_databases(collection_items):
     database_ids = set()
@@ -226,31 +258,45 @@ def get_db_names(data, source):
 def map_databases(exported_databases):
     dbs = list_databases()
 
-    print(
-        "\nTo import the data to Metabase you will need to "
-        "select the database where you want the data to be imported to.\n"
-    )
-    db_ids = [db["id"] for db in dbs]
     for exported_db in exported_databases:
-        while True:
+        selection = None
+
+        # select db automatically if name is matching
+        for db in dbs:
+            if db["name"] == exported_db["name"]:
+                print(db["name"] + " is selected database to import the data exported")
+                selection = db["id"]
+                break
+
+        # if name is matching continue manuel
+        if selection is None:
             print(
-                "Select the database where you want to import the data exported "
-                "from the database '{}'.\n".format(exported_db["name"])
+                "\nTo import the data to Metabase you will need to "
+                "select the database where you want the data to be imported to.\n"
             )
-            for db in dbs:
-                print("{} - {}".format(db["id"], db["name"]))
+            db_ids = [db["id"] for db in dbs]
 
-            print("")
-            selection = input("\n>>> ")
+            while True:
+                print(
+                    "Select the database where you want to import the data exported "
+                    "from the database '{}'.\n".format(exported_db["name"])
+                )
+                for db in dbs:
+                    print("{} - {}".format(db["id"], db["name"]))
 
-            try:
-                if int(selection) in db_ids:
-                    DB_MAPPING[exported_db["id"]] = int(selection)
-                    break
-                else:
-                    print("\n*** Invalid selection ***\n")
-            except ValueError:
-                print("\n** Invalid selection **\n")
+                print("")
+                selection_input = input("\n>>> ")
+
+                try:
+                    if int(selection_input) in db_ids:
+                        selection = int(selection_input)
+                        break
+                    else:
+                        print("\n*** Invalid selection ***\n")
+                except ValueError:
+                    print("\n** Invalid selection **\n")
+
+        DB_MAPPING[exported_db["id"]] = selection
 
 
 def load_database_mapping(exported_databases):
@@ -305,6 +351,7 @@ def load_database_mapping(exported_databases):
                         and field["table_id"] == TABLE_MAPPING[exported_table["id"]]
                     ):
                         FIELD_MAPPING[exported_field["id"]] = field["id"]
+                        FIELD_CONFIG_DICT[exported_field["id"]] = exported_field
                         break
 
                 else:
@@ -316,13 +363,32 @@ def load_database_mapping(exported_databases):
                     sys.exit(1)
 
 
+def match_dataset_configurations():
+    for exported_field_id in FIELD_MAPPING.keys():
+        target_field_id = FIELD_MAPPING[exported_field_id]
+        exported_field_body = FIELD_CONFIG_DICT[exported_field_id]
+        update_field(target_field_id, exported_field_body)
+
+
 def import_collection(export_file, collection_id):
     check_if_collection_exists(collection_id)
+
+    collection_items = get_collection_items(collection_id)
+    for item in collection_items:
+        model = item["model"]
+        id = item["id"]
+
+        if model == "card":
+            delete_card(id)
+        elif model == "dashboard":
+            delete_dashboard(id)
 
     with open(export_file) as export_file:
         export_data = json.load(export_file)
 
     load_database_mapping(export_data["databases"])
+
+    match_dataset_configurations()
 
     for item in export_data["collection_items"]:
         if item["model"] == "card":
